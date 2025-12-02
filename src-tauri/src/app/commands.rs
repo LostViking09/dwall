@@ -26,7 +26,7 @@ use crate::{
     services::{
         cache::{clear_thumbnail_cache, get_or_save_cached_thumbnails},
         download_service::download_theme_and_extract,
-        theme_service::{apply_theme, get_applied_theme_id},
+        theme_service::{apply_theme, get_applied_theme_id, launch_daemon},
     },
 };
 
@@ -47,7 +47,19 @@ pub async fn read_config_file() -> DwallSettingsResult<Config> {
 
 #[tauri::command]
 pub async fn write_config_file(config: Config) -> DwallSettingsResult<()> {
-    dwall_write_config(&config).map_err(Into::into)
+    // Kill the daemon before writing config to ensure it will reload with new settings
+    let _ = kill_daemon();
+    
+    // Give the daemon time to shut down
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    
+    // Write the updated configuration
+    dwall_write_config(&config)?;
+    
+    // Restart the daemon to apply the new configuration
+    launch_daemon()?;
+    
+    Ok(())
 }
 
 #[tauri::command]
@@ -148,7 +160,19 @@ pub async fn move_themes_directory_cmd(
     config: Config,
     dir_path: PathBuf,
 ) -> DwallSettingsResult<()> {
-    move_themes_directory(config, dir_path).await
+    // Kill the daemon before moving themes directory to ensure it will reload on next startup
+    let _ = kill_daemon();
+    
+    // Give the daemon time to shut down
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    
+    // Move the themes directory and update config
+    move_themes_directory(config, dir_path).await?;
+    
+    // Restart the daemon to apply the new configuration
+    launch_daemon()?;
+    
+    Ok(())
 }
 
 #[tauri::command]
